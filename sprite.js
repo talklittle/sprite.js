@@ -240,12 +240,22 @@ Scene.prototype.Ticker = function Ticker(paint, options) {
 
 Scene.prototype.dialogEvent = function dialogEvent(div, el, event, callback) {
     var that = this, ev;
-    ev = function() {
-        el.removeEventListener("click", event, false);
-        that.dom.removeChild(div);
-        callback();
-    };
-    el.addEventListener("click", ev, false);
+    if (typeof el.addEventListener !== 'undefined') {
+        ev = function() {
+            el.removeEventListener("click", event, false);
+            that.dom.removeChild(div);
+            callback();
+        };
+        el.addEventListener("click", ev, false);
+    }
+    else {
+        ev = function() {
+            el.detachEvent("onclick", event);
+            that.dom.removeChild(div);
+            callback();
+        };
+        el.attachEvent("onclick", ev);
+    }
 };
 
 Scene.prototype.dialog = function dialog(options) {
@@ -300,7 +310,7 @@ Scene.prototype.loadImages = function loadImages(images, callback) {
         spriteList[src].loading = true;
         img = doc.createElement('img');
         spriteList[src].img = img;
-        img.addEventListener('load', function() {
+        var onImageLoad = function() {
             spriteList[src].loaded = true;
             toLoad -= 1;
             if(error === false) {
@@ -311,12 +321,20 @@ Scene.prototype.loadImages = function loadImages(images, callback) {
                     div.innerHTML = 'Loading ' + ((total - toLoad) / total * 100 | 0) + '%';
                 }
             }
-        }, false);
+        };
+        if (typeof img.addEventListener !== 'undefined')
+            img.addEventListener('load', onImageLoad, false);
+        else
+            img.attachEvent('onload', onImageLoad);
 
-        img.addEventListener('error', function() {
+        var onImageError = function() {
             error = true;
             div.innerHTML = 'Error loading image ' + src;
-        }, false);
+        };
+        if (typeof img.addEventListener !== 'undefined')
+            img.addEventListener('error', onImageError, false);
+        else
+            img.attachEvent('onerror', onImageError);
 
         img.src = src;
     }
@@ -879,7 +897,10 @@ Sprite.prototype.loadImg = function (src, resetSize) {
     if(_loaded)
         imageReady();
     else {
-        this.img.addEventListener('load', imageReady, false);
+        if (typeof this.img.addEventListener !== 'undefined')
+            this.img.addEventListener('load', imageReady, false);
+        else
+            this.img.attachEvent('onload', imageReady);
         this.img.src = src;
     }
     return this;
@@ -1233,6 +1254,7 @@ _Input = function _Input(scene) {
 
     // this is handling WASD, and arrows keys
     function updateKeyboard(e, val) {
+        e || (e = event);
         if(e.keyCode==40 || e.keyCode==83) {
             updateKeyChange('down', val);
         }
@@ -1265,7 +1287,10 @@ _Input = function _Input(scene) {
     }
 
     var addEvent = function(name, fct) {
-        global.addEventListener(name, fct, false);
+        if (typeof global.addEventListener !== 'undefined')
+            global.addEventListener(name, fct, false);
+        else
+            global.attachEvent('on'+name, fct);
     }
     
     
@@ -1369,11 +1394,13 @@ _Input = function _Input(scene) {
 
     addEvent("keydown", function(e) {
         that.keydown = true;
+        console.log('keydown');
         updateKeyboard(e, true);
     });
 
     addEvent("keyup", function(e) {
         that.keydown = false;
+        console.log('keyup');
         updateKeyboard(e, false);
     });
 
@@ -1390,7 +1417,7 @@ _Input.prototype.arrows = function arrows() {
 
 // Add an automatic pause to all the scenes when the user
 // quit the current window.
-global.addEventListener("blur", function (e) {
+var pauseOnBlur = function (e) {
     for(var i=0; i < sjs.scenes.length; i++) {
         var scene = sjs.scenes[i];
         if(!scene.autoPause)
@@ -1407,21 +1434,40 @@ global.addEventListener("blur", function (e) {
                 div.style.textAlign = 'center';
                 div.style.paddingTop = ((scene.h/2) - 32)  + 'px';
                 var listener = function(e) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    scene.dom.removeChild(div);
-                    doc.removeEventListener('click', listener, false);
-                    doc.removeEventListener('keyup', listener, false);
+                    if (typeof e.stopPropagation !== 'undefined') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        scene.dom.removeChild(div);
+                        doc.removeEventListener('click', listener, false);
+                        doc.removeEventListener('keyup', listener, false);
+                    }
+                    else {
+                        e.cancelBubble = true;
+                        e.returnValue = false;
+                        scene.dom.removeChild(div);
+                        doc.detachEvent('onclick', listener);
+                        doc.detachEvent('onkeyup', listener);
+                    }
                     scene.ticker.resume();
                 }
-                doc.addEventListener('click', listener, false);
-                doc.addEventListener('keyup', listener, false);
+                if (typeof doc.addEventListener !== 'undefined') {
+                    doc.addEventListener('click', listener, false);
+                    doc.addEventListener('keyup', listener, false);
+                }
+                else {
+                    doc.attachEvent('onclick', listener);
+                    doc.attachEvent('onkeyup', listener);
+                }
                 scene.dom.appendChild(div);
             }
         }
         anon(scene);
     }
-}, false);
+}
+if (typeof global.addEventListener !== 'undefined')
+    global.addEventListener("blur", pauseOnBlur, false);
+else
+    global.attachEvent("onblur", pauseOnBlur);
 
 Layer = function Layer(scene, name, options) {
 
